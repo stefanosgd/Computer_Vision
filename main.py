@@ -70,9 +70,9 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
 
     # construct label
     if not depth:
-        label = '%s:%.2f' % (class_name, confidence)
+        label = '%s' % class_name
     else:
-        label = '%s:%.2f Distance:%.2f' % (class_name, confidence, distance)
+        label = '%s: %.2f m' % (class_name, distance)
 
     # Display the label at the top of the bounding box
     labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -133,7 +133,6 @@ def postprocess(image, results, threshold_confidence, threshold_nms):
         classIds_nms.append(classIds[i])
         confidences_nms.append(confidences[i])
         boxes_nms.append(boxes[i])
-
     # return post processed lists of classIds, confidences and bounding boxes
     return (classIds_nms, confidences_nms, boxes_nms)
 
@@ -259,6 +258,7 @@ for filename_left in left_file_list:
     # if (cap.isOpened):
     frame = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
     frame = frame[0:390, 0:frame.shape[1]]
+    # frame = frame[0:390,135:frame.shape[1]]
 
     if ('.png' in filename_left) and (os.path.isfile(full_path_filename_right)):
 
@@ -288,6 +288,20 @@ for filename_left in left_file_list:
         grayL = np.power(grayL, 0.75).astype('uint8')
         grayR = np.power(grayR, 0.75).astype('uint8')
 
+        clahe = cv2.createCLAHE(clipLimit=32.0, tileGridSize=(8, 8))
+        grayL = clahe.apply(grayL)
+        grayR = clahe.apply(grayR)
+        # grayL = cv2.equalizeHist(grayL)
+        # grayR = cv2.equalizeHist(grayR)
+
+        grayL = cv2.medianBlur(grayL, 3)
+        grayR = cv2.medianBlur(grayR, 3)
+
+        grayL = cv2.GaussianBlur(grayL, (3, 3), 0)
+        grayR = cv2.GaussianBlur(grayR, (3, 3), 0)
+        # grayL = cv2.bilateralFilter(grayL, 9, 100, 100)
+        # grayR = cv2.bilateralFilter(grayR, 9, 100, 100)
+
         # compute disparity image from undistorted and rectified stereo images
         # that we have loaded
         # (which for reasons best known to the OpenCV developers is returned scaled by 16)
@@ -308,14 +322,16 @@ for filename_left in left_file_list:
         _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO)
 
         disparity_scaled = (disparity / 16.).astype(np.uint8)
-
         # display image (scaling it to the full 0->255 range based on the number
         # of disparities in use for the stereo part)
-
+        if True:
+            width = np.size(disparity_scaled, 1)
+            disparity_scaled = disparity_scaled[0:390, 135:width]
+            frame = frame[0:390, 135:width]
         cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8))
 
     # rescale if specified
-    if (args.rescale != 1.0):
+    if args.rescale != 1.0:
         frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
 
     # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
@@ -343,20 +359,21 @@ for filename_left in left_file_list:
         width = box[2]
         height = box[3]
         colour = [0, 0, 0]
-
-        disparity_difference = disparity_scaled[top + height//2][left + width//2]
+        if classes[classIDs[detected_object]] == "car":
+            colour = [0, 0, 255]
+        elif classes[classIDs[detected_object]] == "bus":
+            colour = [255, 0, 0]
+        elif classes[classIDs[detected_object]] == "person":
+            colour = [0, 255, 0]
+        disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
+                                                        max(left, 0):min(left + width, disparity_scaled.shape[1])])
         if disparity_difference != 0:
             depth = focal_length * baseline_distance / disparity_difference
             if depth < min_depth:
                 min_depth = depth
         else:
             depth = False
-        if classes[classIDs[detected_object]] == "car":
-            colour = [0, 0, 255]
-        elif classes[classIDs[detected_object]] == "person":
-            colour = [0, 255, 0]
-        elif classes[classIDs[detected_object]] == "bus":
-            colour = [255, 0, 0]
+
         drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width,
                  top + height, colour, depth)
 
@@ -381,14 +398,14 @@ for filename_left in left_file_list:
 
     # start the event loop + detect specific key strokes
     # wait 40ms or less depending on processing time taken (i.e. 1000ms / 25 fps = 40 ms)
-    key = cv2.waitKey(max(2, 40 - int(math.ceil(stop_t)))) & 0xFF
-
+    key = cv2.waitKey(max(2 * (not pause_playback), (40 - int(math.ceil(stop_t))) * (not pause_playback))) & 0xFF
     # if user presses "x" then exit  / press "f" for fullscreen display
     if (key == ord('x')):
         break
     elif (key == ord('f')):
         args.fullscreen = not (args.fullscreen)
-
+    elif (key == ord(' ')):  # pause (on next frame)
+        pause_playback = not (pause_playback)
 # close all windows
 cv2.destroyAllWindows()
 
