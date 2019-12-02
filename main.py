@@ -191,7 +191,7 @@ output_layer_names = getOutputsNames(net)
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_DEFAULT)
 
 # change to cv2.dnn.DNN_TARGET_CPU (slower) if this causes issues (should fail gracefully if OpenCL not available)
-net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
+net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 ################################################################################
 
@@ -266,11 +266,12 @@ for filename_left in left_file_list:
         # N.B. despite one being grayscale both are in fact stored as 3-channel
         # RGB images so load both as such
 
-        imgL = frame
+        grayL = cv2.imread(full_path_filename_left, cv2.IMREAD_GRAYSCALE)
+        grayL = grayL[0:390, 0:grayL.shape[1]]
         # cv2.imshow('left image', imgL)
 
-        imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
-        imgR = imgR[0:390, 0:imgR.shape[1]]
+        grayR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
+        grayR = grayR[0:390, 0:grayR.shape[1]]
         # cv2.imshow('right image', imgR)
 
         # print("-- files loaded successfully")
@@ -279,8 +280,8 @@ for filename_left in left_file_list:
         # remember to convert to grayscale (as the disparity matching works on grayscale)
         # N.B. need to do for both as both are 3-channel images
 
-        grayL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
-        grayR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
+        # grayL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
+        # grayR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
 
         # perform preprocessing - raise to the power, as this subjectively appears
         # to improve subsequent disparity calculation
