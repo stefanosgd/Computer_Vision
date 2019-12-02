@@ -241,8 +241,54 @@ left_file_list = sorted(os.listdir(full_path_directory_left))
 # create window by name (as resizable)
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
 
+# max_disparity = 128
+# window_size = 11
+# stereoProcessor = cv2.StereoSGBM_create(
+#     minDisparity=0,
+#     numDisparities=max_disparity,  # max_disp has to be dividable by 16 f. E. HH 192, 256
+#     blockSize=5,
+#     P1=8 * 3 * window_size ** 2,
+#     # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
+#     P2=32 * 3 * window_size ** 2,
+#     disp12MaxDiff=1,
+#     uniquenessRatio=15,
+#     speckleWindowSize=0,
+#     speckleRange=2,
+#     preFilterCap=63,
+#     mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
+# )
+
+window_size = 11
+# wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
+
 max_disparity = 128
-stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21)
+
+left_matcher = cv2.StereoSGBM_create(
+    minDisparity=0,
+    numDisparities=max_disparity,  # max_disp has to be dividable by 16 f. E. HH 192, 256
+    blockSize=5,
+    P1=8 * 3 * window_size ** 2,
+    # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
+    P2=32 * 3 * window_size ** 2,
+    disp12MaxDiff=1,
+    uniquenessRatio=15,
+    speckleWindowSize=0,
+    speckleRange=2,
+    preFilterCap=63,
+    mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
+)
+
+right_matcher = cv2.ximgproc.createRightMatcher(left_matcher)
+
+# FILTER Parameters
+lmbda = 80000
+sigma = 1.2
+visual_multiplier = 1.0
+
+wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
+wls_filter.setLambda(lmbda)
+wls_filter.setSigmaColor(sigma)
+
 
 for filename_left in left_file_list:
     # from the left image filename get the corresponding right image
@@ -266,53 +312,74 @@ for filename_left in left_file_list:
         # N.B. despite one being grayscale both are in fact stored as 3-channel
         # RGB images so load both as such
 
-        grayL = cv2.imread(full_path_filename_left, cv2.IMREAD_GRAYSCALE)
-        grayL = grayL[0:390, 0:grayL.shape[1]]
+        imgL = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # imgL = imgL[0:390, 0:imgL.shape[1]]
         # cv2.imshow('left image', imgL)
 
-        grayR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
-        grayR = grayR[0:390, 0:grayR.shape[1]]
+        imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
+        imgR = imgR[0:390, 0:imgR.shape[1]]
         # cv2.imshow('right image', imgR)
+        vis = np.concatenate((imgL, imgR), axis=1)
+        cv2.imshow("Before", vis)
 
-        # print("-- files loaded successfully")
-        # print()
+        # imgL = np.power(imgL, 0.75).astype('uint8')
+        # imgR = np.power(imgR, 0.75).astype('uint8')
 
-        # remember to convert to grayscale (as the disparity matching works on grayscale)
-        # N.B. need to do for both as both are 3-channel images
+        # vis = np.concatenate((imgL, imgR), axis=1)
+        # cv2.imshow("After1", vis)
 
+        imgL = cv2.equalizeHist(imgL)
+        imgR = cv2.equalizeHist(imgR)
+
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        imgL = clahe.apply(imgL)
+        imgR = clahe.apply(imgR)
+
+        vis = np.concatenate((imgL, imgR), axis=1)
+        cv2.imshow("After2", vis)
+        # cv2.waitKey(0)
+        # # remember to convert to grayscale (as the disparity matching works on grayscale)
+        # # N.B. need to do for both as both are 3-channel images
+        #
         # grayL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
         # grayR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
+        #
+        # # perform preprocessing - raise to the power, as this subjectively appears
+        # # to improve subsequent disparity calculation
+        #
+        # grayL = np.power(grayL, 0.75).astype('uint8')
+        # grayR = np.power(grayR, 0.75).astype('uint8')
+        #
+        # clahe = cv2.createCLAHE(clipLimit=32.0, tileGridSize=(8, 8))
+        # grayL = clahe.apply(grayL)
+        # grayR = clahe.apply(grayR)
+        # # grayL = cv2.equalizeHist(grayL)
+        # # grayR = cv2.equalizeHist(grayR)
+        #
+        # imgL = cv2.medianBlur(imgL, 3)
+        # imgR = cv2.medianBlur(imgR, 3)
 
-        # perform preprocessing - raise to the power, as this subjectively appears
-        # to improve subsequent disparity calculation
-
-        grayL = np.power(grayL, 0.75).astype('uint8')
-        grayR = np.power(grayR, 0.75).astype('uint8')
-
-        clahe = cv2.createCLAHE(clipLimit=32.0, tileGridSize=(8, 8))
-        grayL = clahe.apply(grayL)
-        grayR = clahe.apply(grayR)
-        # grayL = cv2.equalizeHist(grayL)
-        # grayR = cv2.equalizeHist(grayR)
-
-        grayL = cv2.medianBlur(grayL, 3)
-        grayR = cv2.medianBlur(grayR, 3)
-
-        grayL = cv2.GaussianBlur(grayL, (3, 3), 0)
-        grayR = cv2.GaussianBlur(grayR, (3, 3), 0)
-        # grayL = cv2.bilateralFilter(grayL, 9, 100, 100)
-        # grayR = cv2.bilateralFilter(grayR, 9, 100, 100)
+        # imgL = cv2.GaussianBlur(imgL, (3, 3), 0)
+        # imgR = cv2.GaussianBlur(imgR, (3, 3), 0)
+        # # grayL = cv2.bilateralFilter(grayL, 9, 100, 100)
+        # # grayR = cv2.bilateralFilter(grayR, 9, 100, 100)
 
         # compute disparity image from undistorted and rectified stereo images
         # that we have loaded
         # (which for reasons best known to the OpenCV developers is returned scaled by 16)
 
-        disparity = stereoProcessor.compute(grayL, grayR)
+        # disparity = stereoProcessor.compute(imgL, imgR)
 
         # filter out noise and speckles (adjust parameters as needed)
 
-        dispNoiseFilter = 5  # increase for more aggressive filtering
-        cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter)
+        # dispNoiseFilter = 5  # increase for more aggressive filtering
+        # cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter)
+
+        displ = left_matcher.compute(imgL, imgR)
+        dispr = right_matcher.compute(imgR, imgL)
+        displ = np.int16(displ)
+        dispr = np.int16(dispr)
+        disparity = wls_filter.filter(displ, imgL, None, dispr)
 
         # scale the disparity to 8-bit for viewing
         # divide by 16 and convert to 8-bit image (then range of values should
