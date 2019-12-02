@@ -150,6 +150,56 @@ def getOutputsNames(net):
 
 ################################################################################
 
+def disparity_map(grayL, grayR, top, bottom, left, right):
+
+    grayL = grayL[max(top, 0):min(bottom, grayL.shape[0]), max(left, 0):min(right, grayL.shape[1])]
+    grayR = grayR[max(top, 0):min(bottom, grayR.shape[0]), max(left, 0):min(right, grayR.shape[1])]
+
+    grayL = np.power(grayL, 0.75).astype('uint8')
+    grayR = np.power(grayR, 0.75).astype('uint8')
+
+    clahe = cv2.createCLAHE(clipLimit=60.0, tileGridSize=(8, 8))
+    grayL = clahe.apply(grayL)
+    grayR = clahe.apply(grayR)
+    # grayL = cv2.equalizeHist(grayL)
+    # grayR = cv2.equalizeHist(grayR)
+    #
+    # grayL = cv2.medianBlur(grayL, 3)
+    # grayR = cv2.medianBlur(grayR, 3)
+
+    # grayL = cv2.GaussianBlur(grayL, (3, 3), 0)
+    # grayR = cv2.GaussianBlur(grayR, (3, 3), 0)
+    # grayL = cv2.bilateralFilter(grayL, 9, 100, 100)
+    # grayR = cv2.bilateralFilter(grayR, 9, 100, 100)
+
+    # compute disparity image from undistorted and rectified stereo images
+    # that we have loaded
+    # (which for reasons best known to the OpenCV developers is returned scaled by 16)
+
+    disparity = stereoProcessor.compute(grayL, grayR)
+
+    # filter out noise and speckles (adjust parameters as needed)
+
+    dispNoiseFilter = 2  # increase for more aggressive filtering
+    cv2.filterSpeckles(disparity, 0, 2000, max_disparity - dispNoiseFilter)
+
+    # scale the disparity to 8-bit for viewing
+    # divide by 16 and convert to 8-bit image (then range of values should
+    # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
+    # so we fix this also using a initial threshold between 0 and max_disparity
+    # as disparity=-1 means no disparity available
+
+    _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO)
+
+    disparity_scaled = (disparity / 16.).astype(np.uint8)
+
+    cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8))
+
+    return np.amax(disparity_scaled)
+
+
+################################################################################
+
 # define video capture object
 
 # try:
@@ -191,7 +241,7 @@ output_layer_names = getOutputsNames(net)
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_DEFAULT)
 
 # change to cv2.dnn.DNN_TARGET_CPU (slower) if this causes issues (should fail gracefully if OpenCL not available)
-net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
+net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 ################################################################################
 
@@ -211,7 +261,7 @@ directory_to_cycle_right = "right-images"  # edit this if needed
 # set this to a file timestamp to start from (empty is first example - outside lab)
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
-skip_forward_file_pattern = ""  # set to timestamp to skip forward to
+skip_forward_file_pattern = "1506943412.479849"  # set to timestamp to skip forward to
 
 crop_disparity = False  # display full or cropped disparity image
 pause_playback = False  # pause until key press after each image
@@ -241,11 +291,16 @@ left_file_list = sorted(os.listdir(full_path_directory_left))
 # create window by name (as resizable)
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
 
-max_disparity = 128
+max_disparity = 16
 stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21)
 
 for filename_left in left_file_list:
     # from the left image filename get the corresponding right image
+
+    if (len(skip_forward_file_pattern) > 0) and not (skip_forward_file_pattern in filename_left):
+        continue
+    elif (len(skip_forward_file_pattern) > 0) and (skip_forward_file_pattern in filename_left):
+        skip_forward_file_pattern = ""
 
     filename_right = filename_left.replace("_L", "_R")
     full_path_filename_left = os.path.join(full_path_directory_left, filename_left)
@@ -254,81 +309,8 @@ for filename_left in left_file_list:
     # start a timer (to see how long processing and display takes)
     start_t = cv2.getTickCount()
 
-    # if camera /video file successfully open then read frame
-    # if (cap.isOpened):
     frame = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
     frame = frame[0:390, 0:frame.shape[1]]
-    # frame = frame[0:390,135:frame.shape[1]]
-
-    if ('.png' in filename_left) and (os.path.isfile(full_path_filename_right)):
-
-        # read left and right images and display in windows
-        # N.B. despite one being grayscale both are in fact stored as 3-channel
-        # RGB images so load both as such
-
-        imgL = frame
-        # cv2.imshow('left image', imgL)
-
-        imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
-        imgR = imgR[0:390, 0:imgR.shape[1]]
-        # cv2.imshow('right image', imgR)
-
-        # print("-- files loaded successfully")
-        # print()
-
-        # remember to convert to grayscale (as the disparity matching works on grayscale)
-        # N.B. need to do for both as both are 3-channel images
-
-        grayL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
-        grayR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
-
-        # perform preprocessing - raise to the power, as this subjectively appears
-        # to improve subsequent disparity calculation
-
-        grayL = np.power(grayL, 0.75).astype('uint8')
-        grayR = np.power(grayR, 0.75).astype('uint8')
-
-        clahe = cv2.createCLAHE(clipLimit=32.0, tileGridSize=(8, 8))
-        grayL = clahe.apply(grayL)
-        grayR = clahe.apply(grayR)
-        # grayL = cv2.equalizeHist(grayL)
-        # grayR = cv2.equalizeHist(grayR)
-
-        grayL = cv2.medianBlur(grayL, 3)
-        grayR = cv2.medianBlur(grayR, 3)
-
-        grayL = cv2.GaussianBlur(grayL, (3, 3), 0)
-        grayR = cv2.GaussianBlur(grayR, (3, 3), 0)
-        # grayL = cv2.bilateralFilter(grayL, 9, 100, 100)
-        # grayR = cv2.bilateralFilter(grayR, 9, 100, 100)
-
-        # compute disparity image from undistorted and rectified stereo images
-        # that we have loaded
-        # (which for reasons best known to the OpenCV developers is returned scaled by 16)
-
-        disparity = stereoProcessor.compute(grayL, grayR)
-
-        # filter out noise and speckles (adjust parameters as needed)
-
-        dispNoiseFilter = 5  # increase for more aggressive filtering
-        cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter)
-
-        # scale the disparity to 8-bit for viewing
-        # divide by 16 and convert to 8-bit image (then range of values should
-        # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
-        # so we fix this also using a initial threshold between 0 and max_disparity
-        # as disparity=-1 means no disparity available
-
-        _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO)
-
-        disparity_scaled = (disparity / 16.).astype(np.uint8)
-        # display image (scaling it to the full 0->255 range based on the number
-        # of disparities in use for the stereo part)
-        if True:
-            width = np.size(disparity_scaled, 1)
-            disparity_scaled = disparity_scaled[0:390, 135:width]
-            frame = frame[0:390, 135:width]
-        cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8))
 
     # rescale if specified
     if args.rescale != 1.0:
@@ -359,14 +341,39 @@ for filename_left in left_file_list:
         width = box[2]
         height = box[3]
         colour = [0, 0, 0]
+
+        # read left and right images and display in windows
+        # N.B. despite one being grayscale both are in fact stored as 3-channel
+        # RGB images so load both as such
+
+        grayLeft = cv2.imread(full_path_filename_left, cv2.IMREAD_GRAYSCALE)
+        # grayLeft = grayLeft[0:390, 0:grayLeft.shape[1]]
+
+        grayRight = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
+        # grayRight = grayRight[0:390, 0:grayRight.shape[1]]
+
+        disparity_difference = disparity_map(grayLeft, grayRight, top, (top + height), left, (left + width))
+
         if classes[classIDs[detected_object]] == "car":
+            # Takes the bottom half of the car in order to ignore issues from any glass windows
+            # disparity_difference = np.amax(disparity_scaled[
+            #                                max(top//2, 0):min(top + height, disparity_scaled.shape[0]),
+            #                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
             colour = [0, 0, 255]
         elif classes[classIDs[detected_object]] == "bus":
+            # Takes the bottom quarter of the bus in order to ignore issues from any glass windows
+            # disparity_difference = np.amax(disparity_scaled[
+            #                                max(top//4, 0):min(top + height, disparity_scaled.shape[0]),
+            #                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
             colour = [255, 0, 0]
         elif classes[classIDs[detected_object]] == "person":
             colour = [0, 255, 0]
-        disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
-                                                        max(left, 0):min(left + width, disparity_scaled.shape[1])])
+            # Takes the top half of the person in order to ignore their feet/the road
+            # disparity_difference = np.amax(disparity_scaled[
+            #                                max(top, 0):min(top + (height//2), disparity_scaled.shape[0]),
+            #                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
+        # else:
+
         if disparity_difference != 0:
             depth = focal_length * baseline_distance / disparity_difference
             if depth < min_depth:
