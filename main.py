@@ -331,7 +331,7 @@ for filename_left in left_file_list:
         imgL = cv2.equalizeHist(imgL)
         imgR = cv2.equalizeHist(imgR)
 
-        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         imgL = clahe.apply(imgL)
         imgR = clahe.apply(imgR)
 
