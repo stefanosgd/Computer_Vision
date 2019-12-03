@@ -170,7 +170,7 @@ def getOutputsNames(net):
 
 # init YOLO CNN object detection model
 
-confThreshold = 0.5  # Confidence threshold
+confThreshold = 0.7  # Confidence threshold
 nmsThreshold = 0.4  # Non-maximum suppression threshold
 inpWidth = 416  # Width of network's input image
 inpHeight = 416  # Height of network's input image
@@ -198,7 +198,7 @@ net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 # define display window name + trackbar
 
 windowName = 'YOLOv3 object detection: ' + args.weights_file
-cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
+cv2.namedWindow(windowName, cv2.WINDOW_AUTOSIZE)
 # trackbarName = 'reporting confidence > (x 0.01)'
 # cv2.createTrackbar(trackbarName, windowName, 0, 100, on_trackbar)
 
@@ -212,7 +212,8 @@ directory_to_cycle_right = "right-images"  # edit this if needed
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
 skip_forward_file_pattern = ""  # set to timestamp to skip forward to
-
+# 1506943412.479849
+# 1506943260.487874
 crop_disparity = False  # display full or cropped disparity image
 pause_playback = False  # pause until key press after each image
 
@@ -293,6 +294,11 @@ wls_filter.setSigmaColor(sigma)
 for filename_left in left_file_list:
     # from the left image filename get the corresponding right image
 
+    if (len(skip_forward_file_pattern) > 0) and not (skip_forward_file_pattern in filename_left):
+        continue
+    elif (len(skip_forward_file_pattern) > 0) and (skip_forward_file_pattern in filename_left):
+        skip_forward_file_pattern = ""
+
     filename_right = filename_left.replace("_L", "_R")
     full_path_filename_left = os.path.join(full_path_directory_left, filename_left)
     full_path_filename_right = os.path.join(full_path_directory_right, filename_right)
@@ -301,10 +307,8 @@ for filename_left in left_file_list:
     start_t = cv2.getTickCount()
 
     # if camera /video file successfully open then read frame
-    # if (cap.isOpened):
     frame = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
     frame = frame[0:390, 0:frame.shape[1]]
-    # frame = frame[0:390,135:frame.shape[1]]
 
     if ('.png' in filename_left) and (os.path.isfile(full_path_filename_right)):
 
@@ -313,67 +317,15 @@ for filename_left in left_file_list:
         # RGB images so load both as such
 
         imgL = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # imgL = imgL[0:390, 0:imgL.shape[1]]
-        # cv2.imshow('left image', imgL)
 
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
         imgR = imgR[0:390, 0:imgR.shape[1]]
-        # cv2.imshow('right image', imgR)
-        vis = np.concatenate((imgL, imgR), axis=1)
-        cv2.imshow("Before", vis)
-
-        # imgL = np.power(imgL, 0.75).astype('uint8')
-        # imgR = np.power(imgR, 0.75).astype('uint8')
-
-        # vis = np.concatenate((imgL, imgR), axis=1)
-        # cv2.imshow("After1", vis)
-
-        imgL = cv2.equalizeHist(imgL)
-        imgR = cv2.equalizeHist(imgR)
+        # imgL = cv2.equalizeHist(imgL)
+        # imgR = cv2.equalizeHist(imgR)
 
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         imgL = clahe.apply(imgL)
         imgR = clahe.apply(imgR)
-
-        vis = np.concatenate((imgL, imgR), axis=1)
-        cv2.imshow("After2", vis)
-        # cv2.waitKey(0)
-        # # remember to convert to grayscale (as the disparity matching works on grayscale)
-        # # N.B. need to do for both as both are 3-channel images
-        #
-        # grayL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
-        # grayR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
-        #
-        # # perform preprocessing - raise to the power, as this subjectively appears
-        # # to improve subsequent disparity calculation
-        #
-        # grayL = np.power(grayL, 0.75).astype('uint8')
-        # grayR = np.power(grayR, 0.75).astype('uint8')
-        #
-        # clahe = cv2.createCLAHE(clipLimit=32.0, tileGridSize=(8, 8))
-        # grayL = clahe.apply(grayL)
-        # grayR = clahe.apply(grayR)
-        # # grayL = cv2.equalizeHist(grayL)
-        # # grayR = cv2.equalizeHist(grayR)
-        #
-        # imgL = cv2.medianBlur(imgL, 3)
-        # imgR = cv2.medianBlur(imgR, 3)
-
-        # imgL = cv2.GaussianBlur(imgL, (3, 3), 0)
-        # imgR = cv2.GaussianBlur(imgR, (3, 3), 0)
-        # # grayL = cv2.bilateralFilter(grayL, 9, 100, 100)
-        # # grayR = cv2.bilateralFilter(grayR, 9, 100, 100)
-
-        # compute disparity image from undistorted and rectified stereo images
-        # that we have loaded
-        # (which for reasons best known to the OpenCV developers is returned scaled by 16)
-
-        # disparity = stereoProcessor.compute(imgL, imgR)
-
-        # filter out noise and speckles (adjust parameters as needed)
-
-        # dispNoiseFilter = 5  # increase for more aggressive filtering
-        # cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter)
 
         displ = left_matcher.compute(imgL, imgR)
         dispr = right_matcher.compute(imgR, imgL)
@@ -396,70 +348,77 @@ for filename_left in left_file_list:
             width = np.size(disparity_scaled, 1)
             disparity_scaled = disparity_scaled[0:390, 135:width]
             frame = frame[0:390, 135:width]
-        cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8))
+        # cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8))
+        # cv2.imshow("disparity", disparity_scaled)
 
-    # rescale if specified
-    if args.rescale != 1.0:
-        frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
+        # rescale if specified
+        if args.rescale != 1.0:
+            frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
 
-    # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
-    tensor = cv2.dnn.blobFromImage(frame, 1 / 255, (inpWidth, inpHeight), [0, 0, 0], 1, crop=False)
+        small_frame = cv2.resize(frame, (int(frame.shape[1]*50/100), int(frame.shape[0]*50/100)),
+                                 interpolation=cv2.INTER_AREA)
+        # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
+        tensor = cv2.dnn.blobFromImage(small_frame, 1 / 255, (inpWidth, inpHeight), [0, 0, 0], 1, crop=False)
 
-    # set the input to the CNN network
-    net.setInput(tensor)
+        # set the input to the CNN network
+        net.setInput(tensor)
 
-    # runs forward inference to get output of the final output layers
-    results = net.forward(output_layer_names)
+        # runs forward inference to get output of the final output layers
+        results = net.forward(output_layer_names)
 
-    # remove the bounding boxes with low confidence
-    # confThreshold = cv2.getTrackbarPos(trackbarName, windowName) / 100
-    # if confThreshold < 0:
-    #     confThreshold = 0.0
-    confThreshold = 0.6
-    classIDs, confidences, boxes = postprocess(frame, results, confThreshold, nmsThreshold)
+        # remove the bounding boxes with low confidence
+        # confThreshold = cv2.getTrackbarPos(trackbarName, windowName) / 100
+        # if confThreshold < 0:
+        #     confThreshold = 0.0
+        # confThreshold = 0.6
+        classIDs, confidences, boxes = postprocess(small_frame, results, confThreshold, nmsThreshold)
 
-    min_depth = math.inf
-    # draw resulting detections on image
-    for detected_object in range(0, len(boxes)):
-        box = boxes[detected_object]
-        left = box[0]
-        top = box[1]
-        width = box[2]
-        height = box[3]
-        colour = [0, 0, 0]
-        if classes[classIDs[detected_object]] == "car":
-            colour = [0, 0, 255]
-        elif classes[classIDs[detected_object]] == "bus":
-            colour = [255, 0, 0]
-        elif classes[classIDs[detected_object]] == "person":
-            colour = [0, 255, 0]
-        disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
-                                                        max(left, 0):min(left + width, disparity_scaled.shape[1])])
-        if disparity_difference != 0:
-            depth = focal_length * baseline_distance / disparity_difference
-            if depth < min_depth:
-                min_depth = depth
-        else:
-            depth = False
+        min_depth = math.inf
+        # draw resulting detections on image
+        for detected_object in range(0, len(boxes)):
+            box = boxes[detected_object]
+            left = int(box[0] * 2)
+            top = int(box[1] * 2)
+            width = int(box[2] * 2)
+            height = int(box[3] * 2)
+            colour = [0, 0, 0]
+            if classes[classIDs[detected_object]] == "car":
+                colour = [0, 0, 255]
+            elif classes[classIDs[detected_object]] == "bus":
+                colour = [255, 0, 0]
+            elif classes[classIDs[detected_object]] == "person":
+                colour = [0, 255, 0]
+            disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
+                                                            max(left, 0):min(left + width, disparity_scaled.shape[1])])
+            if disparity_difference != 0:
+                depth = focal_length * baseline_distance / disparity_difference
+                if depth < min_depth:
+                    min_depth = depth
+            else:
+                depth = False
 
-        drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width,
-                 top + height, colour, depth)
+            drawPred(frame, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width,
+                     top + height, colour, depth)
 
-    print(filename_left)
-    if min_depth == math.inf:
-        min_depth = 0.0
-    print(filename_right, "Nearest detected scene object (", min_depth, "m)")
+        print(filename_left)
+        if min_depth == math.inf:
+            min_depth = 0.0
+        print(filename_right, "Nearest detected scene object (", min_depth, "m)")
 
-    # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the
-    # timings for each of the layers(in layersTimes)
-    t, _ = net.getPerfProfile()
-    label = 'Inference time: %.2f ms' % (t * 1000.0 / cv2.getTickFrequency())
-    cv2.putText(frame, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
+        # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the
+        # timings for each of the layers(in layersTimes)
+        t, _ = net.getPerfProfile()
+        label = 'Inference time: %.2f ms' % (t * 1000.0 / cv2.getTickFrequency())
+        cv2.putText(frame, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
 
-    # display image
-    cv2.imshow(windowName, frame)
-    cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN,
-                          cv2.WINDOW_FULLSCREEN & args.fullscreen)
+        # display image
+        # disparity_scaled = cv2.equalizeHist(disparity_scaled)
+
+        disparity_scaled = cv2.cvtColor(disparity_scaled, cv2.COLOR_GRAY2BGR)
+        vis = np.concatenate((frame, disparity_scaled), axis=1)
+        cv2.imshow(windowName, vis)
+        cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN,
+                              cv2.WINDOW_FULLSCREEN & args.fullscreen)
 
     # stop the timer and convert to ms. (to see how long processing and display takes)
     stop_t = ((cv2.getTickCount() - start_t) / cv2.getTickFrequency()) * 1000
