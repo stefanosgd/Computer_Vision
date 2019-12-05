@@ -25,7 +25,8 @@ import os
 keep_processing = True
 
 # parse command line arguments for camera ID or video file, and YOLO files
-parser = argparse.ArgumentParser(description='Perform ' + sys.argv[0] + ' example operation on incoming camera/video image')
+parser = argparse.ArgumentParser(
+    description='Perform ' + sys.argv[0] + ' example operation on incoming camera/video image')
 parser.add_argument("-c", "--camera_to_use", type=int, help="specify camera to use", default=0)
 parser.add_argument("-r", "--rescale", type=float, help="rescale image by this factor", default=1.0)
 parser.add_argument("-fs", "--fullscreen", action='store_true', help="run in full screen mode")
@@ -35,6 +36,7 @@ parser.add_argument("-cf", "--config_file", type=str, help="network config", def
 parser.add_argument("-w", "--weights_file", type=str, help="network weights", default='yolov3.weights')
 
 args = parser.parse_args()
+
 
 ################################################################################
 # Draw the predicted bounding box on the specified image
@@ -224,6 +226,7 @@ wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
 wls_filter.setLambda(lmbda)
 wls_filter.setSigmaColor(sigma)
 
+out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 3, (1024, 780))
 
 for filename_left in left_file_list:
     # from the left image filename get the corresponding right image
@@ -243,7 +246,6 @@ for filename_left in left_file_list:
     # if video file successfully opened then read frame and crop the bonnet of the car out
     frame = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
     frame = frame[0:390, 0:frame.shape[1]]
-
     if ('.png' in filename_left) and (os.path.isfile(full_path_filename_right)):
 
         # read left and right images
@@ -272,8 +274,8 @@ for filename_left in left_file_list:
         displ = np.int16(displ)
         dispr = np.int16(dispr)
         disparity2 = cv2.flip(wls_filter.filter(dispr, imgL2, None, displ), 1)
-        disparity = disparity[0:disparity.shape[0], disparity.shape[1]//2:disparity.shape[1]]
-        disparity2 = disparity2[0:disparity2.shape[0], 0:disparity2.shape[1]//2]
+        disparity = disparity[0:disparity.shape[0], disparity.shape[1] // 2:disparity.shape[1]]
+        disparity2 = disparity2[0:disparity2.shape[0], 0:disparity2.shape[1] // 2]
         disparity = np.concatenate((disparity2, disparity), axis=1)
         # scale the disparity to 8-bit for viewing
         # divide by 16 and convert to 8-bit image (then range of values should
@@ -352,9 +354,9 @@ for filename_left in left_file_list:
         # disparity_scaled = cv2.equalizeHist(disparity_scaled)
 
         disparity_scaled = cv2.cvtColor(disparity_scaled, cv2.COLOR_GRAY2BGR)
-        # vis = np.concatenate((frame, disparity_scaled), axis=0)
-        cv2.imshow(windowName, frame)
-        cv2.imshow("Disp", disparity_scaled)
+        vis = np.concatenate((frame, disparity_scaled), axis=0)
+        cv2.imshow(windowName, vis)
+        out.write(vis)
         cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN,
                               cv2.WINDOW_FULLSCREEN & args.fullscreen)
 
@@ -371,6 +373,8 @@ for filename_left in left_file_list:
         args.fullscreen = not (args.fullscreen)
     elif (key == ord(' ')):  # pause (on next frame)
         pause_playback = not (pause_playback)
+
+out.release()
 # close all windows
 cv2.destroyAllWindows()
 
