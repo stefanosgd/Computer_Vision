@@ -247,7 +247,7 @@ wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
 wls_filter.setLambda(lmbda)
 wls_filter.setSigmaColor(sigma)
 
-out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 2, (1024, 780))
+# out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 2, (1024, 780))
 
 for filename_left in left_file_list:
     # from the left image filename get the corresponding right image
@@ -282,6 +282,8 @@ for filename_left in left_file_list:
         classIDs, confidences, boxes = postprocess(small_frame, results, confThreshold, nmsThreshold)
 
         min_depth = math.inf
+
+        # if an object is detected find the disparity map
         if len(boxes) > 0:
             # read left and right images
             # get left image from current frame and convert it to grayscale
@@ -293,27 +295,35 @@ for filename_left in left_file_list:
             grayR = grayR[0:390, 0:grayR.shape[1]]
 
             disparity_scaled = calculate_disparity(grayL, grayR)
+
         # draw resulting detections on image
         for detected_object in range(0, len(boxes)):
             box = boxes[detected_object]
-            left = int(box[0])
-            top = int(box[1])
-            width = int(box[2])
-            height = int(box[3])
+            left = box[0]
+            top = box[1]
+            width = box[2]
+            height = box[3]
             colour = [0, 0, 0]
             if classes[classIDs[detected_object]] == "car":
+                # set the colour of the bounding box
                 colour = [0, 0, 255]
+                # find the closest point in the bottom half of the bounding box of the car that protrudes
                 disparity_difference = np.amax(disparity_scaled[max(top + height//2, 0):min(top + height, disparity_scaled.shape[0]),
                                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
             elif classes[classIDs[detected_object]] == "bus":
+                # set the colour of the bounding box
                 colour = [255, 0, 0]
+                # find the closest point in the bottom half of the bounding box of the bus to avoid windows
                 disparity_difference = np.amax(disparity_scaled[max(top + height//2, 0):min(top + height, disparity_scaled.shape[0]),
                                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
             elif classes[classIDs[detected_object]] == "person":
+                # set the colour of the bounding box
                 colour = [0, 255, 0]
+                # find the closest point in the top half of the bounding box of the person to avoid the pavement
                 disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height//2, disparity_scaled.shape[0]),
                                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
             else:
+                # find the closest point in the bounding box
                 disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
                                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
             if disparity_difference != 0:
@@ -338,12 +348,11 @@ for filename_left in left_file_list:
         cv2.putText(frame, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
 
         # display image
-        # disparity_scaled = cv2.equalizeHist(disparity_scaled)
         if len(disparity_scaled.shape) == 2:
             disparity_scaled = cv2.cvtColor(disparity_scaled, cv2.COLOR_GRAY2BGR)
         vis = np.concatenate((frame, disparity_scaled), axis=0)
         cv2.imshow(windowName, vis)
-        out.write(vis)
+        # out.write(vis)
         cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN,
                               cv2.WINDOW_FULLSCREEN & args.fullscreen)
 
@@ -361,11 +370,8 @@ for filename_left in left_file_list:
     elif (key == ord(' ')):  # pause (on next frame)
         pause_playback = not (pause_playback)
 
-out.release()
+# out.release()
 # close all windows
 cv2.destroyAllWindows()
-
-# else:
-# print("No video file specified or camera connected.")
 
 ################################################################################
