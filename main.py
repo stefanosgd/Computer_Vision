@@ -199,7 +199,7 @@ left_file_list = sorted(os.listdir(full_path_directory_left))
 
 window_size = 5
 
-max_disparity = 512
+max_disparity = 128
 
 left_matcher = cv2.StereoSGBM_create(
     minDisparity=0,
@@ -226,7 +226,7 @@ wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
 wls_filter.setLambda(lmbda)
 wls_filter.setSigmaColor(sigma)
 
-out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 3, (1024, 780))
+out = cv2.VideoWriter('output.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 2, (1024, 780))
 
 for filename_left in left_file_list:
     # from the left image filename get the corresponding right image
@@ -257,7 +257,7 @@ for filename_left in left_file_list:
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
         imgR = imgR[0:390, 0:imgR.shape[1]]
 
-        # clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         # imgL = clahe.apply(imgL)
         # imgR = clahe.apply(imgR)
 
@@ -266,17 +266,6 @@ for filename_left in left_file_list:
         displ = np.int16(displ)
         dispr = np.int16(dispr)
         disparity = wls_filter.filter(displ, imgL, None, dispr)
-
-        imgL2 = cv2.flip(imgL, 1)
-        imgR2 = cv2.flip(imgR, 1)
-        dispr = left_matcher.compute(imgR2, imgL2)
-        displ = right_matcher.compute(imgL2, imgR2)
-        displ = np.int16(displ)
-        dispr = np.int16(dispr)
-        disparity2 = cv2.flip(wls_filter.filter(dispr, imgL2, None, displ), 1)
-        disparity = disparity[0:disparity.shape[0], disparity.shape[1] // 2:disparity.shape[1]]
-        disparity2 = disparity2[0:disparity2.shape[0], 0:disparity2.shape[1] // 2]
-        disparity = np.concatenate((disparity2, disparity), axis=1)
         # scale the disparity to 8-bit for viewing
         # divide by 16 and convert to 8-bit image (then range of values should
         # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
