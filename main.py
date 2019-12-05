@@ -1,22 +1,9 @@
 ################################################################################
 
-# Example : performs YOLO (v3) object detection from a video file
-# specified on the command line (e.g. python FILE.py video_file) or from an
-# attached web camera
-
-# Author : Toby Breckon, toby.breckon@durham.ac.uk
-
-# Copyright (c) 2019 Toby Breckon, Durham University, UK
-# License : LGPL - http://www.gnu.org/licenses/lgpl.html
-
-# Implements the You Only Look Once (YOLO) object detection architecture decribed in full in:
-# Redmon, J., & Farhadi, A. (2018). Yolov3: An incremental improvement. arXiv preprint arXiv:1804.02767.
-# https://pjreddie.com/media/files/papers/YOLOv3.pdf
-
-# This code: significant portions based in part on the tutorial and example available at:
-# https://www.learnopencv.com/deep-learning-based-object-detection-using-yolov3-with-opencv-python-c/
-# https://github.com/spmallick/learnopencv/blob/master/ObjectDetection-YOLO/object_detection_yolo.py
-# under LICENSE: https://github.com/spmallick/learnopencv/blob/master/ObjectDetection-YOLO/LICENSE
+# This code: significantly based on code provided by Toby Breckon, toby.breckon@durham.ac.uk,
+# taken from the files stereo_disparity.py and yolo.py, available at:
+# https://github.com/tobybreckon/stereo-disparity
+# https://github.com/tobybreckon/python-examples-cv
 
 # To use first download the following files:
 
@@ -38,8 +25,7 @@ import os
 keep_processing = True
 
 # parse command line arguments for camera ID or video file, and YOLO files
-parser = argparse.ArgumentParser(
-    description='Perform ' + sys.argv[0] + ' example operation on incoming camera/video image')
+parser = argparse.ArgumentParser(description='Perform ' + sys.argv[0] + ' example operation on incoming camera/video image')
 parser.add_argument("-c", "--camera_to_use", type=int, help="specify camera to use", default=0)
 parser.add_argument("-r", "--rescale", type=float, help="rescale image by this factor", default=1.0)
 parser.add_argument("-fs", "--fullscreen", action='store_true', help="run in full screen mode")
@@ -50,14 +36,7 @@ parser.add_argument("-w", "--weights_file", type=str, help="network weights", de
 
 args = parser.parse_args()
 
-
 ################################################################################
-# dummy on trackbar callback function
-# def on_trackbar(val):
-#     return
-
-
-#####################################################################
 # Draw the predicted bounding box on the specified image
 # image: image detection performed on
 # class_name: string name of detected object_detection
@@ -68,8 +47,8 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
     # Draw a bounding box.
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
 
-    # construct label
-    if not depth:
+    # construct label. If no depth is provided, do not display a distance
+    if not distance:
         label = '%s' % class_name
     else:
         label = '%s: %.2f m' % (class_name, distance)
@@ -77,9 +56,9 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
     # Display the label at the top of the bounding box
     labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
     top = max(top, labelSize[1])
-    cv2.rectangle(image, (left, top - round(1.5 * labelSize[1])),
-                  (left + round(1.5 * labelSize[0]), top + baseLine), (255, 255, 255), cv2.FILLED)
-    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 0), 1)
+    cv2.rectangle(image, (left, top - round(1.0 * labelSize[1])),
+                  (left + round(0.75 * labelSize[0]), top + baseLine), (255, 255, 255), cv2.FILLED)
+    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
 
 
 #####################################################################
@@ -134,7 +113,7 @@ def postprocess(image, results, threshold_confidence, threshold_nms):
         confidences_nms.append(confidences[i])
         boxes_nms.append(boxes[i])
     # return post processed lists of classIds, confidences and bounding boxes
-    return (classIds_nms, confidences_nms, boxes_nms)
+    return classIds_nms, confidences_nms, boxes_nms
 
 
 ################################################################################
@@ -150,27 +129,9 @@ def getOutputsNames(net):
 
 ################################################################################
 
-# define video capture object
-
-# try:
-#     # to use a non-buffered camera stream (via a separate thread)
-#
-#     if not (args.video_file):
-#         pass
-#     else:
-#         cap = cv2.VideoCapture()  # not needed for video files
-#
-# except:
-#     # if not then just use OpenCV default
-#
-#     print("INFO: camera_stream class not found - camera input may be buffered")
-#     cap = cv2.VideoCapture()
-
-################################################################################
-
 # init YOLO CNN object detection model
 
-confThreshold = 0.7  # Confidence threshold
+confThreshold = 0.6  # Confidence threshold
 nmsThreshold = 0.4  # Non-maximum suppression threshold
 inpWidth = 416  # Width of network's input image
 inpHeight = 416  # Height of network's input image
@@ -191,20 +152,18 @@ output_layer_names = getOutputsNames(net)
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_DEFAULT)
 
 # change to cv2.dnn.DNN_TARGET_CPU (slower) if this causes issues (should fail gracefully if OpenCL not available)
-net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
 
 ################################################################################
 
-# define display window name + trackbar
+# define display window name + create it
 
 windowName = 'YOLOv3 object detection: ' + args.weights_file
 cv2.namedWindow(windowName, cv2.WINDOW_AUTOSIZE)
-# trackbarName = 'reporting confidence > (x 0.01)'
-# cv2.createTrackbar(trackbarName, windowName, 0, 100, on_trackbar)
 
 # where is the data ? - set this to where you have it
 
-master_path_to_dataset = "./TTBB-durham-02-10-17-sub10"  # ** need to edit this **
+master_path_to_dataset = "./TTBB-durham-02-10-17-sub10"  # edit this if needed
 directory_to_cycle_left = "left-images"  # edit this if needed
 directory_to_cycle_right = "right-images"  # edit this if needed
 
@@ -214,8 +173,9 @@ directory_to_cycle_right = "right-images"  # edit this if needed
 skip_forward_file_pattern = ""  # set to timestamp to skip forward to
 # 1506943412.479849
 # 1506943260.487874
-crop_disparity = False  # display full or cropped disparity image
 pause_playback = False  # pause until key press after each image
+
+# camera information
 
 baseline_distance = 0.2090607502
 focal_length = 399.9745178222656
@@ -233,43 +193,17 @@ left_file_list = sorted(os.listdir(full_path_directory_left))
 
 ################################################################################
 
-# if command line arguments are provided try to read video_name
-# otherwise default to capture from attached camera
+# parameters for the disparity map
 
-# if (((args.video_file) and (cap.open(str(args.video_file))))
-#         or (cap.open(args.camera_to_use))):
+window_size = 5
 
-# create window by name (as resizable)
-cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
-
-# max_disparity = 128
-# window_size = 11
-# stereoProcessor = cv2.StereoSGBM_create(
-#     minDisparity=0,
-#     numDisparities=max_disparity,  # max_disp has to be dividable by 16 f. E. HH 192, 256
-#     blockSize=5,
-#     P1=8 * 3 * window_size ** 2,
-#     # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
-#     P2=32 * 3 * window_size ** 2,
-#     disp12MaxDiff=1,
-#     uniquenessRatio=15,
-#     speckleWindowSize=0,
-#     speckleRange=2,
-#     preFilterCap=63,
-#     mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
-# )
-
-window_size = 11
-# wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
-
-max_disparity = 128
+max_disparity = 512
 
 left_matcher = cv2.StereoSGBM_create(
     minDisparity=0,
     numDisparities=max_disparity,  # max_disp has to be dividable by 16 f. E. HH 192, 256
     blockSize=5,
     P1=8 * 3 * window_size ** 2,
-    # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
     P2=32 * 3 * window_size ** 2,
     disp12MaxDiff=1,
     uniquenessRatio=15,
@@ -306,26 +240,24 @@ for filename_left in left_file_list:
     # start a timer (to see how long processing and display takes)
     start_t = cv2.getTickCount()
 
-    # if camera /video file successfully open then read frame
+    # if video file successfully opened then read frame and crop the bonnet of the car out
     frame = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
     frame = frame[0:390, 0:frame.shape[1]]
 
     if ('.png' in filename_left) and (os.path.isfile(full_path_filename_right)):
 
-        # read left and right images and display in windows
-        # N.B. despite one being grayscale both are in fact stored as 3-channel
-        # RGB images so load both as such
+        # read left and right images
+        # get left image from current frame and convert it to grayscale
+        # read right image as a grayscale image and crop it to remove car bonnet
 
         imgL = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
         imgR = imgR[0:390, 0:imgR.shape[1]]
-        # imgL = cv2.equalizeHist(imgL)
-        # imgR = cv2.equalizeHist(imgR)
 
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-        imgL = clahe.apply(imgL)
-        imgR = clahe.apply(imgR)
+        # clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        # imgL = clahe.apply(imgL)
+        # imgR = clahe.apply(imgR)
 
         displ = left_matcher.compute(imgL, imgR)
         dispr = right_matcher.compute(imgR, imgL)
@@ -333,6 +265,16 @@ for filename_left in left_file_list:
         dispr = np.int16(dispr)
         disparity = wls_filter.filter(displ, imgL, None, dispr)
 
+        imgL2 = cv2.flip(imgL, 1)
+        imgR2 = cv2.flip(imgR, 1)
+        dispr = left_matcher.compute(imgR2, imgL2)
+        displ = right_matcher.compute(imgL2, imgR2)
+        displ = np.int16(displ)
+        dispr = np.int16(dispr)
+        disparity2 = cv2.flip(wls_filter.filter(dispr, imgL2, None, displ), 1)
+        disparity = disparity[0:disparity.shape[0], disparity.shape[1]//2:disparity.shape[1]]
+        disparity2 = disparity2[0:disparity2.shape[0], 0:disparity2.shape[1]//2]
+        disparity = np.concatenate((disparity2, disparity), axis=1)
         # scale the disparity to 8-bit for viewing
         # divide by 16 and convert to 8-bit image (then range of values should
         # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
@@ -344,19 +286,16 @@ for filename_left in left_file_list:
         disparity_scaled = (disparity / 16.).astype(np.uint8)
         # display image (scaling it to the full 0->255 range based on the number
         # of disparities in use for the stereo part)
-        if True:
-            width = np.size(disparity_scaled, 1)
-            disparity_scaled = disparity_scaled[0:390, 135:width]
-            frame = frame[0:390, 135:width]
-        # cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8))
-        # cv2.imshow("disparity", disparity_scaled)
+        # crop out the left side of the image where there is no disparity
+        # width = np.size(disparity_scaled, 1)
+        # disparity_scaled = disparity_scaled[0:390, 135:width]
+        # frame = frame[0:390, 135:width]
 
         # rescale if specified
         if args.rescale != 1.0:
             frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
 
-        small_frame = cv2.resize(frame, (int(frame.shape[1]*50/100), int(frame.shape[0]*50/100)),
-                                 interpolation=cv2.INTER_AREA)
+        small_frame = cv2.resize(frame, (int(frame.shape[1]), int(frame.shape[0])), interpolation=cv2.INTER_AREA)
         # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
         tensor = cv2.dnn.blobFromImage(small_frame, 1 / 255, (inpWidth, inpHeight), [0, 0, 0], 1, crop=False)
 
@@ -367,20 +306,16 @@ for filename_left in left_file_list:
         results = net.forward(output_layer_names)
 
         # remove the bounding boxes with low confidence
-        # confThreshold = cv2.getTrackbarPos(trackbarName, windowName) / 100
-        # if confThreshold < 0:
-        #     confThreshold = 0.0
-        # confThreshold = 0.6
         classIDs, confidences, boxes = postprocess(small_frame, results, confThreshold, nmsThreshold)
 
         min_depth = math.inf
         # draw resulting detections on image
         for detected_object in range(0, len(boxes)):
             box = boxes[detected_object]
-            left = int(box[0] * 2)
-            top = int(box[1] * 2)
-            width = int(box[2] * 2)
-            height = int(box[3] * 2)
+            left = int(box[0])
+            top = int(box[1])
+            width = int(box[2])
+            height = int(box[3])
             colour = [0, 0, 0]
             if classes[classIDs[detected_object]] == "car":
                 colour = [0, 0, 255]
@@ -389,7 +324,9 @@ for filename_left in left_file_list:
             elif classes[classIDs[detected_object]] == "person":
                 colour = [0, 255, 0]
             disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
-                                                            max(left, 0):min(left + width, disparity_scaled.shape[1])])
+                                           max(left, 0):min(left + width, disparity_scaled.shape[1])])
+            # disparity_difference = np.mean(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
+            #                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
             if disparity_difference != 0:
                 depth = focal_length * baseline_distance / disparity_difference
                 if depth < min_depth:
@@ -415,8 +352,9 @@ for filename_left in left_file_list:
         # disparity_scaled = cv2.equalizeHist(disparity_scaled)
 
         disparity_scaled = cv2.cvtColor(disparity_scaled, cv2.COLOR_GRAY2BGR)
-        vis = np.concatenate((frame, disparity_scaled), axis=1)
-        cv2.imshow(windowName, vis)
+        # vis = np.concatenate((frame, disparity_scaled), axis=0)
+        cv2.imshow(windowName, frame)
+        cv2.imshow("Disp", disparity_scaled)
         cv2.setWindowProperty(windowName, cv2.WND_PROP_FULLSCREEN,
                               cv2.WINDOW_FULLSCREEN & args.fullscreen)
 
