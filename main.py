@@ -131,6 +131,27 @@ def getOutputsNames(net):
 
 ################################################################################
 
+def calculate_disparity(imgL, imgR):
+    displ = left_matcher.compute(imgL, imgR)
+    dispr = right_matcher.compute(imgR, imgL)
+    displ = np.int16(displ)
+    dispr = np.int16(dispr)
+    disparity = wls_filter.filter(displ, imgL, None, dispr)
+    # scale the disparity to 8-bit for viewing
+    # divide by 16 and convert to 8-bit image (then range of values should
+    # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
+    # so we fix this also using a initial threshold between 0 and max_disparity
+    # as disparity=-1 means no disparity available
+
+    _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO)
+
+    disparity_fixed = (disparity / 16.).astype(np.uint8)
+    # display image (scaling it to the full 0->255 range based on the number
+    # of disparities in use for the stereo part)
+    return disparity_fixed
+
+################################################################################
+
 # init YOLO CNN object detection model
 
 confThreshold = 0.6  # Confidence threshold
@@ -203,7 +224,7 @@ max_disparity = 128
 
 left_matcher = cv2.StereoSGBM_create(
     minDisparity=0,
-    numDisparities=max_disparity,  # max_disp has to be dividable by 16 f. E. HH 192, 256
+    numDisparities=max_disparity,  # max_disp has to be dividable by 16
     blockSize=5,
     P1=8 * 3 * window_size ** 2,
     P2=32 * 3 * window_size ** 2,
@@ -247,45 +268,6 @@ for filename_left in left_file_list:
     frame = cv2.imread(full_path_filename_left, cv2.IMREAD_COLOR)
     frame = frame[0:390, 0:frame.shape[1]]
     if ('.png' in filename_left) and (os.path.isfile(full_path_filename_right)):
-
-        # read left and right images
-        # get left image from current frame and convert it to grayscale
-        # read right image as a grayscale image and crop it to remove car bonnet
-
-        imgL = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
-        imgR = imgR[0:390, 0:imgR.shape[1]]
-
-        # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-        # imgL = clahe.apply(imgL)
-        # imgR = clahe.apply(imgR)
-
-        displ = left_matcher.compute(imgL, imgR)
-        dispr = right_matcher.compute(imgR, imgL)
-        displ = np.int16(displ)
-        dispr = np.int16(dispr)
-        disparity = wls_filter.filter(displ, imgL, None, dispr)
-        # scale the disparity to 8-bit for viewing
-        # divide by 16 and convert to 8-bit image (then range of values should
-        # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
-        # so we fix this also using a initial threshold between 0 and max_disparity
-        # as disparity=-1 means no disparity available
-
-        _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO)
-
-        disparity_scaled = (disparity / 16.).astype(np.uint8)
-        # display image (scaling it to the full 0->255 range based on the number
-        # of disparities in use for the stereo part)
-        # crop out the left side of the image where there is no disparity
-        # width = np.size(disparity_scaled, 1)
-        # disparity_scaled = disparity_scaled[0:390, 135:width]
-        # frame = frame[0:390, 135:width]
-
-        # rescale if specified
-        if args.rescale != 1.0:
-            frame = cv2.resize(frame, (0, 0), fx=args.rescale, fy=args.rescale)
-
         small_frame = cv2.resize(frame, (int(frame.shape[1]), int(frame.shape[0])), interpolation=cv2.INTER_AREA)
         # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
         tensor = cv2.dnn.blobFromImage(small_frame, 1 / 255, (inpWidth, inpHeight), [0, 0, 0], 1, crop=False)
@@ -300,6 +282,17 @@ for filename_left in left_file_list:
         classIDs, confidences, boxes = postprocess(small_frame, results, confThreshold, nmsThreshold)
 
         min_depth = math.inf
+        if len(boxes) > 0:
+            # read left and right images
+            # get left image from current frame and convert it to grayscale
+            # read right image as a grayscale image and crop it to remove car bonnet
+
+            grayL = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            grayR = cv2.imread(full_path_filename_right, cv2.IMREAD_GRAYSCALE)
+            grayR = grayR[0:390, 0:grayR.shape[1]]
+
+            disparity_scaled = calculate_disparity(grayL, grayR)
         # draw resulting detections on image
         for detected_object in range(0, len(boxes)):
             box = boxes[detected_object]
@@ -310,14 +303,19 @@ for filename_left in left_file_list:
             colour = [0, 0, 0]
             if classes[classIDs[detected_object]] == "car":
                 colour = [0, 0, 255]
+                disparity_difference = np.amax(disparity_scaled[max(top + height//2, 0):min(top + height, disparity_scaled.shape[0]),
+                                               max(left, 0):min(left + width, disparity_scaled.shape[1])])
             elif classes[classIDs[detected_object]] == "bus":
                 colour = [255, 0, 0]
+                disparity_difference = np.amax(disparity_scaled[max(top + height//2, 0):min(top + height, disparity_scaled.shape[0]),
+                                               max(left, 0):min(left + width, disparity_scaled.shape[1])])
             elif classes[classIDs[detected_object]] == "person":
                 colour = [0, 255, 0]
-            disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
-                                           max(left, 0):min(left + width, disparity_scaled.shape[1])])
-            # disparity_difference = np.mean(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
-            #                                max(left, 0):min(left + width, disparity_scaled.shape[1])])
+                disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height//2, disparity_scaled.shape[0]),
+                                               max(left, 0):min(left + width, disparity_scaled.shape[1])])
+            else:
+                disparity_difference = np.amax(disparity_scaled[max(top, 0):min(top + height, disparity_scaled.shape[0]),
+                                               max(left, 0):min(left + width, disparity_scaled.shape[1])])
             if disparity_difference != 0:
                 depth = focal_length * baseline_distance / disparity_difference
                 if depth < min_depth:
@@ -341,8 +339,8 @@ for filename_left in left_file_list:
 
         # display image
         # disparity_scaled = cv2.equalizeHist(disparity_scaled)
-
-        disparity_scaled = cv2.cvtColor(disparity_scaled, cv2.COLOR_GRAY2BGR)
+        if len(disparity_scaled.shape) == 2:
+            disparity_scaled = cv2.cvtColor(disparity_scaled, cv2.COLOR_GRAY2BGR)
         vis = np.concatenate((frame, disparity_scaled), axis=0)
         cv2.imshow(windowName, vis)
         out.write(vis)
