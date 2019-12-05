@@ -289,17 +289,17 @@ for filename_left in left_file_list:
         grayL = np.power(grayL, 0.75).astype('uint8')
         grayR = np.power(grayR, 0.75).astype('uint8')
 
-        clahe = cv2.createCLAHE(clipLimit=32.0, tileGridSize=(8, 8))
-        grayL = clahe.apply(grayL)
-        grayR = clahe.apply(grayR)
+        # clahe = cv2.createCLAHE(clipLimit=32.0, tileGridSize=(8, 8))
+        # grayL = clahe.apply(grayL)
+        # grayR = clahe.apply(grayR)
         # grayL = cv2.equalizeHist(grayL)
         # grayR = cv2.equalizeHist(grayR)
 
-        grayL = cv2.medianBlur(grayL, 3)
-        grayR = cv2.medianBlur(grayR, 3)
-
-        grayL = cv2.GaussianBlur(grayL, (3, 3), 0)
-        grayR = cv2.GaussianBlur(grayR, (3, 3), 0)
+        # grayL = cv2.medianBlur(grayL, 3)
+        # grayR = cv2.medianBlur(grayR, 3)
+        #
+        # grayL = cv2.GaussianBlur(grayL, (3, 3), 0)
+        # grayR = cv2.GaussianBlur(grayR, (3, 3), 0)
         # grayL = cv2.bilateralFilter(grayL, 9, 100, 100)
         # grayR = cv2.bilateralFilter(grayR, 9, 100, 100)
 
@@ -311,7 +311,7 @@ for filename_left in left_file_list:
 
         # filter out noise and speckles (adjust parameters as needed)
 
-        dispNoiseFilter = 5  # increase for more aggressive filtering
+        dispNoiseFilter = 2  # increase for more aggressive filtering
         cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter)
 
         # scale the disparity to 8-bit for viewing
